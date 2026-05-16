@@ -30,13 +30,17 @@ CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", 0.80))
 # ── Proxy Config ──────────────────────────────────────────────────────────────
 PROXY_USER = os.environ.get("PROXY_USER", "azucytnw")
 PROXY_PASS = os.environ.get("PROXY_PASS", "uzwv5plwkyop")
-PROXY_HOST = os.environ.get("PROXY_HOST", "p.webshare.io")
-PROXY_PORT = os.environ.get("PROXY_PORT", "80")
+PROXY_HOST = os.environ.get("PROXY_HOST", "45.38.107.97")
+PROXY_PORT = os.environ.get("PROXY_PORT", "6014")
 
 PROXIES = {
     "http":  f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
     "https": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 }
+
+# Force proxy at OS level so py_clob_client picks it up automatically
+os.environ["HTTP_PROXY"]  = PROXIES["http"]
+os.environ["HTTPS_PROXY"] = PROXIES["https"]
 
 client_groq = Groq(api_key=GROQ_KEY)
 app         = Flask(__name__)
@@ -111,6 +115,8 @@ def derive_api_key():
             POLY_API_KEY = data.get("apiKey", POLY_API_KEY)
             add_log(f"✅ API key derived: {POLY_API_KEY[:8]}...", "success")
             return data
+        else:
+            add_log(f"Derive returned {r.status_code}: {r.text[:100]}", "error")
     except Exception as e:
         add_log(f"Derive failed: {e}", "error")
     return None
@@ -123,12 +129,12 @@ def place_order(market, outcome, amount_usdc):
         from py_clob_client.clob_types import OrderArgs, OrderType
         from py_clob_client.constants import POLYGON
 
+        # No proxies= argument here — HTTP_PROXY/HTTPS_PROXY env vars handle it
         clob = ClobClient(
             host           = CLOB_API,
             chain_id       = POLYGON,
             key            = PRIVATE_KEY,
-            signature_type = 0,
-            proxies        = PROXIES
+            signature_type = 0
         )
 
         # Get or derive credentials
@@ -173,9 +179,9 @@ def place_order(market, outcome, amount_usdc):
         size = round(amount_usdc / max(price, 0.01), 4)
         add_log(f"Placing: {outcome} | Price:{price} | Size:{size} | ${amount_usdc}", "info")
 
-        order_args  = OrderArgs(token_id=token_id, price=round(price,4), size=size, side="BUY")
-        signed_order= clob.create_order(order_args)
-        result      = clob.post_order(signed_order, OrderType.FOK)
+        order_args   = OrderArgs(token_id=token_id, price=round(price,4), size=size, side="BUY")
+        signed_order = clob.create_order(order_args)
+        result       = clob.post_order(signed_order, OrderType.FOK)
 
         add_log(f"Order result: {result}", "info")
 
@@ -253,9 +259,9 @@ def run_bot_cycle():
 
     add_log("🤖 PolyBot started on Railway!", "success")
     add_log(f"Budget: ${USDC_BUDGET} | Bet: ${BET_SIZE} | Min conf: {CONFIDENCE_THRESHOLD*100:.0f}%", "info")
-    add_log(f"🌐 Proxy: {PROXY_HOST}:{PROXY_PORT}", "info")
+    add_log(f"🌐 Proxy: {PROXY_HOST}:{PROXY_PORT} (UK residential)", "info")
 
-    # Derive credentials
+    # Derive credentials via proxy
     derive_api_key()
 
     while True:

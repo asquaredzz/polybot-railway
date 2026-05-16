@@ -27,6 +27,17 @@ USDC_BUDGET          = float(os.environ.get("USDC_BUDGET", 5.92))
 BET_SIZE             = float(os.environ.get("BET_SIZE", 0.50))
 CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", 0.80))
 
+# ── Proxy Config ──────────────────────────────────────────────────────────────
+PROXY_USER = os.environ.get("PROXY_USER", "azucytnw")
+PROXY_PASS = os.environ.get("PROXY_PASS", "uzwv5plwkyop")
+PROXY_HOST = os.environ.get("PROXY_HOST", "p.webshare.io")
+PROXY_PORT = os.environ.get("PROXY_PORT", "80")
+
+PROXIES = {
+    "http":  f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
+    "https": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+}
+
 client_groq = Groq(api_key=GROQ_KEY)
 app         = Flask(__name__)
 CORS(app)
@@ -89,7 +100,12 @@ def get_l1_headers():
 def derive_api_key():
     global POLY_API_KEY
     try:
-        r = requests.get(f"{CLOB_API}/auth/derive-api-key", headers=get_l1_headers(), timeout=15)
+        r = requests.get(
+            f"{CLOB_API}/auth/derive-api-key",
+            headers=get_l1_headers(),
+            proxies=PROXIES,
+            timeout=15
+        )
         if r.status_code == 200:
             data = r.json()
             POLY_API_KEY = data.get("apiKey", POLY_API_KEY)
@@ -111,7 +127,8 @@ def place_order(market, outcome, amount_usdc):
             host           = CLOB_API,
             chain_id       = POLYGON,
             key            = PRIVATE_KEY,
-            signature_type = 0
+            signature_type = 0,
+            proxies        = PROXIES
         )
 
         # Get or derive credentials
@@ -130,7 +147,11 @@ def place_order(market, outcome, amount_usdc):
         if not condition_id:
             return False, None
 
-        r = requests.get(f"{CLOB_API}/markets/{condition_id}", timeout=10)
+        r = requests.get(
+            f"{CLOB_API}/markets/{condition_id}",
+            proxies=PROXIES,
+            timeout=10
+        )
         if r.status_code != 200:
             return False, None
 
@@ -232,6 +253,7 @@ def run_bot_cycle():
 
     add_log("🤖 PolyBot started on Railway!", "success")
     add_log(f"Budget: ${USDC_BUDGET} | Bet: ${BET_SIZE} | Min conf: {CONFIDENCE_THRESHOLD*100:.0f}%", "info")
+    add_log(f"🌐 Proxy: {PROXY_HOST}:{PROXY_PORT}", "info")
 
     # Derive credentials
     derive_api_key()

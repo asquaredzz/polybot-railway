@@ -1,0 +1,7 @@
+flask
+flask-cors
+groq
+requests
+eth-account
+py-clob-client
+python-dotenv

@@ -14,6 +14,7 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
+import httpx
 from groq import Groq
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -33,14 +34,29 @@ PROXY_PASS = os.environ.get("PROXY_PASS", "uzwv5plwkyop")
 PROXY_HOST = os.environ.get("PROXY_HOST", "45.38.107.97")
 PROXY_PORT = os.environ.get("PROXY_PORT", "6014")
 
+PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+
 PROXIES = {
-    "http":  f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
-    "https": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+    "http":  PROXY_URL,
+    "https": PROXY_URL
 }
 
-# Force proxy at OS level so py_clob_client picks it up automatically
-os.environ["HTTP_PROXY"]  = PROXIES["http"]
-os.environ["HTTPS_PROXY"] = PROXIES["https"]
+# ── Patch httpx globally so py_clob_client uses the proxy ────────────────────
+_original_httpx_client = httpx.Client
+_original_httpx_async_client = httpx.AsyncClient
+
+def _patched_httpx_client(*args, **kwargs):
+    if "proxies" not in kwargs and "mounts" not in kwargs:
+        kwargs["proxies"] = PROXY_URL
+    return _original_httpx_client(*args, **kwargs)
+
+def _patched_httpx_async_client(*args, **kwargs):
+    if "proxies" not in kwargs and "mounts" not in kwargs:
+        kwargs["proxies"] = PROXY_URL
+    return _original_httpx_async_client(*args, **kwargs)
+
+httpx.Client = _patched_httpx_client
+httpx.AsyncClient = _patched_httpx_async_client
 
 client_groq = Groq(api_key=GROQ_KEY)
 app         = Flask(__name__)
@@ -129,7 +145,6 @@ def place_order(market, outcome, amount_usdc):
         from py_clob_client.clob_types import OrderArgs, OrderType
         from py_clob_client.constants import POLYGON
 
-        # No proxies= argument here — HTTP_PROXY/HTTPS_PROXY env vars handle it
         clob = ClobClient(
             host           = CLOB_API,
             chain_id       = POLYGON,
@@ -137,7 +152,6 @@ def place_order(market, outcome, amount_usdc):
             signature_type = 0
         )
 
-        # Get or derive credentials
         try:
             creds = clob.derive_api_key()
             from py_clob_client.clob_types import ApiCreds
@@ -259,9 +273,8 @@ def run_bot_cycle():
 
     add_log("🤖 PolyBot started on Railway!", "success")
     add_log(f"Budget: ${USDC_BUDGET} | Bet: ${BET_SIZE} | Min conf: {CONFIDENCE_THRESHOLD*100:.0f}%", "info")
-    add_log(f"🌐 Proxy: {PROXY_HOST}:{PROXY_PORT} (UK residential)", "info")
+    add_log(f"🌐 Proxy: {PROXY_HOST}:{PROXY_PORT} (UK residential, httpx patched)", "info")
 
-    # Derive credentials via proxy
     derive_api_key()
 
     while True:

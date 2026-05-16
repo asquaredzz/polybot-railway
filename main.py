@@ -42,21 +42,23 @@ PROXIES = {
 }
 
 # ── Patch httpx globally so py_clob_client uses the proxy ────────────────────
-_original_httpx_client = httpx.Client
+_original_httpx_client       = httpx.Client
 _original_httpx_async_client = httpx.AsyncClient
 
-def _patched_httpx_client(*args, **kwargs):
-    if "proxies" not in kwargs and "mounts" not in kwargs:
-        kwargs["proxies"] = PROXY_URL
-    return _original_httpx_client(*args, **kwargs)
+class _PatchedHttpxClient(_original_httpx_client):
+    def __init__(self, *args, **kwargs):
+        if "transport" not in kwargs and "mounts" not in kwargs:
+            kwargs["transport"] = httpx.HTTPTransport(proxy=PROXY_URL)
+        super().__init__(*args, **kwargs)
 
-def _patched_httpx_async_client(*args, **kwargs):
-    if "proxies" not in kwargs and "mounts" not in kwargs:
-        kwargs["proxies"] = PROXY_URL
-    return _original_httpx_async_client(*args, **kwargs)
+class _PatchedHttpxAsyncClient(_original_httpx_async_client):
+    def __init__(self, *args, **kwargs):
+        if "transport" not in kwargs and "mounts" not in kwargs:
+            kwargs["transport"] = httpx.AsyncHTTPTransport(proxy=PROXY_URL)
+        super().__init__(*args, **kwargs)
 
-httpx.Client = _patched_httpx_client
-httpx.AsyncClient = _patched_httpx_async_client
+httpx.Client      = _PatchedHttpxClient
+httpx.AsyncClient = _PatchedHttpxAsyncClient
 
 client_groq = Groq(api_key=GROQ_KEY)
 app         = Flask(__name__)
@@ -273,7 +275,7 @@ def run_bot_cycle():
 
     add_log("🤖 PolyBot started on Railway!", "success")
     add_log(f"Budget: ${USDC_BUDGET} | Bet: ${BET_SIZE} | Min conf: {CONFIDENCE_THRESHOLD*100:.0f}%", "info")
-    add_log(f"🌐 Proxy: {PROXY_HOST}:{PROXY_PORT} (UK residential, httpx patched)", "info")
+    add_log(f"🌐 Proxy: {PROXY_HOST}:{PROXY_PORT} (UK residential, httpx transport patched)", "info")
 
     derive_api_key()
 
